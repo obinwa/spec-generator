@@ -1,0 +1,64 @@
+{
+  "name": "ai-swagger-generator",
+  "version": "1.0.0",
+  "description": "AI-powered OpenAPI specification generator using Genkit and OpenAI",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "genkit:start": "genkit start",
+    "genkit:flow": "genkit flow run",
+    "docker:build": "docker build -t ai-swagger-generator .",
+    "docker:run": "docker run -p 3000:3000 ai-swagger-generator"
+  },
+  "keywords": [
+    "openapi",
+    "swagger",
+    "ai",
+    "genkit",
+    "openai",
+    "api-documentation",
+    "typescript"
+  ],
+  "author": "Chidiebere Onyeagba",
+  "license": "MIT",
+  "dependencies": {
+    "@genkit-ai/ai": "^1.14.0",
+    "@genkit-ai/core": "^1.14.0",
+    "@genkit-ai/express": "^1.14.0",
+    "@genkit-ai/googleai": "^1.14.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "genkit": "^1.14.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.3",
+    "@types/jest": "^29.5.8",
+    "@types/node": "^24.0.10",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "@typescript-eslint/parser": "^6.13.1",
+    "eslint": "^8.54.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "tsx": "^4.6.0",
+    "typescript": "^5.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/obinwa/spec-generator"
+  },
+  "bugs": {
+    "url": "https://github.com/obinwa/spec-generator/issues"
+  },
+  "homepage": "https://github.com/obinwa/spec-generator#readme"
+}

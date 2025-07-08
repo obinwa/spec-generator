@@ -1,12 +1,13 @@
-import {defineConfig} from '@genkit-ai/core';
+import { configureGenkit } from '@genkit-ai/core';
+import { googleAI } from '@genkit-ai/googleai';
 import {expressServer} from '@genkit-ai/express';
-import {openai} from '@genkit-ai/openai';
 
-export default defineConfig({
+export default configureGenkit({
   plugins: [
     expressServer(),
-    openai({
-      apiKey: process.env.OPENAI_API_KEY,
-    })
-  ]
+    googleAI({
+      apiKey: process.env.GOOGLE_API_KEY,
+    }),
+  ],
+  logLevel: 'info',
 });
