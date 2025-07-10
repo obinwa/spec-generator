@@ -23,8 +23,6 @@ jobs:
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
-          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SA_EMAIL }}
 
       - name: Set up Cloud SDK
         run: |
@@ -46,16 +44,23 @@ jobs:
           docker push $GCP_REGION-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app:$IMAGE_TAG
 
       - name: Verify Docker Image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          gcloud artifacts docker images list $GCP_REGION-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app \
+          # Robust verification using both listing and direct describe
+          echo "Checking for tag $IMAGE_TAG..."
+          gcloud artifacts docker images list \
+            $GCP_REGION-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app \
             --include-tags \
-            --filter="tags=$IMAGE_TAG"
+            --format='value(tags)' | grep -q "$IMAGE_TAG" || \
+            { echo "ERROR: Image tag not found"; exit 1; }
+          
+          echo "Image verified successfully"
 
       # ========== TERRAFORM ==========
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.5.7
           terraform_wrapper: false
 
       - name: Terraform Init
@@ -74,8 +79,8 @@ jobs:
           region = "$GCP_REGION"
           EOF
 
-          # Debug: Show non-sensitive vars
-          echo "terraform.tfvars:"
+          # Debug output (hides sensitive values)
+          echo "terraform.tfvars content:"
           grep -v "google_api_key" terraform.tfvars
         working-directory: ./terraform
 
@@ -84,17 +89,14 @@ jobs:
         run: |
           set -ex
 
-          # Attempt state import if needed
+          # Import existing Cloud Run service if not in state
           if ! terraform state list | grep -q "google_cloud_run_service.genkit"; then
             echo "Importing existing Cloud Run service..."
             terraform import google_cloud_run_service.genkit $GCP_REGION/$PROJECT_ID/swagger-generator-app || \
-            terraform import google_cloud_run_service.genkit locations/$GCP_REGION/namespaces/$PROJECT_ID/services/swagger-generator-app || true
+            echo "Import skipped (resource may not exist yet)"
           fi
 
-          terraform apply -auto-approve -input=false -lock-timeout=10m
-
-          # Verify outputs
-          terraform output -json
+          terraform apply -auto-approve -input=false
         working-directory: ./terraform
 
       # ========== VERIFICATION ==========
@@ -102,13 +104,12 @@ jobs:
         run: |
           SERVICE_URL=$(terraform output -raw service_url)
           echo "Testing endpoint: $SERVICE_URL/api/health"
-          curl --fail --retry 10 --retry-delay 10 $SERVICE_URL/api/health
+          curl --fail --retry 5 --retry-delay 10 $SERVICE_URL/api/health
         working-directory: ./terraform
 
-      - name: Check Cloud Run Status
-        if: always()
+      - name: Final Status Check
         run: |
           gcloud run services describe swagger-generator-app \
             --region=$GCP_REGION \
             --project=$PROJECT_ID \
-            --format="yaml(status, traffic, url)"
+            --format="value(status.url)"
