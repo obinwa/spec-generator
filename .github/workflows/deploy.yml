@@ -53,31 +53,43 @@ jobs:
         run: terraform init
         working-directory: ./terraform
 
+      - name: Debug Environment Variables
+        env:
+          PROJECT_ID: ${{ secrets.PROJECT_ID }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          echo "PROJECT_ID = $PROJECT_ID"
+          echo "GOOGLE_API_KEY is ${#GOOGLE_API_KEY} characters long"
+
       - name: Terraform Apply
+        timeout-minutes: 10
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          PROJECT_ID: ${{ secrets.PROJECT_ID }}
         run: |
           set -e
 
-          echo "Attempting to list state (if it exists)..."
+          echo "Checking terraform state..."
           terraform state list || echo "No state found yet."
 
           if terraform state list | grep -q "google_cloud_run_service.genkit"; then
             echo "Resource exists in state, proceeding to apply."
           else
             echo "Resource not in state, attempting import first."
-            terraform import google_cloud_run_service.genkit projects/${{ secrets.PROJECT_ID }}/locations/us-west4/services/swagger-generator-app || true
+            terraform import google_cloud_run_service.genkit projects/$PROJECT_ID/locations/us-west4/services/swagger-generator-app || true
           fi
 
           terraform apply -auto-approve \
             -var="image_tag=${{ github.sha }}" \
-            -var="google_api_key=${{ secrets.GOOGLE_API_KEY }}" \
-            -var="project_id=${{ secrets.PROJECT_ID }}" \
+            -var="google_api_key=$GOOGLE_API_KEY" \
+            -var="project_id=$PROJECT_ID" \
             -lock-timeout=5m
 
           SERVICE_URL=$(terraform output -raw service_url)
           echo "Waiting for service to be ready at $SERVICE_URL"
           gcloud run services describe swagger-generator-app \
             --region=us-west4 \
-            --project=${{ secrets.PROJECT_ID }} \
+            --project=$PROJECT_ID \
             --format="value(status.url)" \
             --wait
         working-directory: ./terraform
