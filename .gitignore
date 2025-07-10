@@ -40,5 +40,5 @@ cloudbuild-logs/
 dist/
 *.js
 !*.config.js
-.terraform/
+**/.terraform/
 
