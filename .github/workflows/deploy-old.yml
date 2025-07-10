@@ -53,26 +53,28 @@ jobs:
         run: terraform init
         working-directory: ./terraform
 
+      - name: Verify Terraform State
+        run: terraform state list
+        working-directory: ./terraform
+
       - name: Terraform Apply
         run: |
           set -e
-
-          echo "Attempting to list state (if it exists)..."
-          terraform state list || echo "No state found yet."
-
+          # First check if resource exists
           if terraform state list | grep -q "google_cloud_run_service.genkit"; then
-            echo "Resource exists in state, proceeding to apply."
+            echo "Resource exists in state, running apply"
           else
-            echo "Resource not in state, attempting import first."
-            terraform import google_cloud_run_service.genkit projects/${{ secrets.PROJECT_ID }}/locations/us-west4/services/swagger-generator-app || true
+            echo "Resource not in state, attempting import first"
+            terraform import google_cloud_run_service.genkit namespaces/${{ secrets.PROJECT_ID }}/services/swagger-generator-app || true
           fi
-
+          
           terraform apply -auto-approve \
             -var="image_tag=${{ github.sha }}" \
             -var="google_api_key=${{ secrets.GOOGLE_API_KEY }}" \
             -var="project_id=${{ secrets.PROJECT_ID }}" \
             -lock-timeout=5m
-
+          
+          # Wait for deployment to be ready
           SERVICE_URL=$(terraform output -raw service_url)
           echo "Waiting for service to be ready at $SERVICE_URL"
           gcloud run services describe swagger-generator-app \
@@ -106,7 +108,7 @@ jobs:
             --project=$PROJECT_ID \
             --limit=50 \
             --format="json"
-
+          
           echo "--- Current Cloud Run Status ---"
           gcloud run services describe swagger-generator-app \
             --region=us-west4 \
