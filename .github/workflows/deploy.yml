@@ -1,5 +1,5 @@
 name: Deploy
-on: 
+on:
   push:
     branches:
       - production
@@ -10,51 +10,56 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PROJECT_ID: ${{ secrets.PROJECT_ID }}
-      GCP_REGION: us-west4 
+      GCP_REGION: us-west4
     defaults:
       run:
         working-directory: ./app
 
     steps:
+      # ========== SETUP ==========
       - uses: actions/checkout@v4
 
-      - uses: google-github-actions/auth@v1
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
 
       - name: Set up Cloud SDK
-        run: gcloud auth configure-docker us-west4-docker.pkg.dev
+        run: |
+          gcloud auth configure-docker $GCP_REGION-docker.pkg.dev
+          gcloud config set project $PROJECT_ID
 
+      # ========== BUILD ==========
       - name: Install & Build App
         run: |
           npm ci
           npm run build
-        working-directory: ./app
 
       - name: Build and Push Docker Image
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t swagger-spec-generator .
-          docker tag swagger-spec-generator us-west4-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app:$IMAGE_TAG
-          docker push us-west4-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app:$IMAGE_TAG
-        working-directory: ./app
+          docker tag swagger-spec-generator $GCP_REGION-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app:$IMAGE_TAG
+          docker push $GCP_REGION-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app:$IMAGE_TAG
 
       - name: Verify Docker Image
-        env:
-          IMAGE_TAG: ${{ github.sha }}
         run: |
-          gcloud artifacts docker images list us-west4-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app \
+          gcloud artifacts docker images list $GCP_REGION-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app \
             --include-tags \
             --filter="tags=$IMAGE_TAG"
 
+      # ========== TERRAFORM ==========
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
+          terraform_version: 1.5.7
           terraform_wrapper: false
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -input=false
         working-directory: ./terraform
 
       - name: Create tfvars file
@@ -66,64 +71,44 @@ jobs:
           project_id = "$PROJECT_ID"
           google_api_key = "$GOOGLE_API_KEY"
           image_tag = "$IMAGE_TAG"
+          region = "$GCP_REGION"
           EOF
-          
-          # Debug: Verify tfvars file contents (hiding sensitive values)
-          echo "terraform.tfvars contents:"
-          sed 's/google_api_key = .*/google_api_key = "*******"/' terraform.tfvars
+
+          # Debug: Show non-sensitive vars
+          echo "terraform.tfvars:"
+          grep -v "google_api_key" terraform.tfvars
         working-directory: ./terraform
 
       - name: Terraform Apply
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
-          set -e
-          
-          echo "Checking terraform state..."
-          terraform state list || echo "No state found yet."
+          set -ex
 
-          if terraform state list | grep -q "google_cloud_run_service.genkit"; then
-            echo "Resource exists in state, proceeding to apply."
-          else
-            echo "Resource not in state, attempting import first."
-            terraform import google_cloud_run_service.genkit projects/$PROJECT_ID/locations/us-west4/services/swagger-generator-app || true
+          # Attempt state import if needed
+          if ! terraform state list | grep -q "google_cloud_run_service.genkit"; then
+            echo "Importing existing Cloud Run service..."
+            terraform import google_cloud_run_service.genkit $GCP_REGION/$PROJECT_ID/swagger-generator-app || \
+            terraform import google_cloud_run_service.genkit locations/$GCP_REGION/namespaces/$PROJECT_ID/services/swagger-generator-app || true
           fi
 
-          terraform apply -auto-approve -lock-timeout=5m
+          terraform apply -auto-approve -input=false -lock-timeout=10m
+
+          # Verify outputs
+          terraform output -json
         working-directory: ./terraform
 
-      - name: Smoke Test Deployment
-        env:
-          PROJECT_ID: ${{ secrets.PROJECT_ID }}
+      # ========== VERIFICATION ==========
+      - name: Smoke Test
         run: |
           SERVICE_URL=$(terraform output -raw service_url)
-          echo "Testing service at $SERVICE_URL"
-          for i in {1..10}; do
-            if curl -sSf "$SERVICE_URL/api/health"; then
-              echo "Health check passed"
-              exit 0
-            fi
-            echo "Attempt $i failed, retrying in 10 seconds..."
-            sleep 10
-          done
-          echo "Health check failed after 10 attempts"
-          exit 1
+          echo "Testing endpoint: $SERVICE_URL/api/health"
+          curl --fail --retry 10 --retry-delay 10 $SERVICE_URL/api/health
         working-directory: ./terraform
 
-      - name: Check Cloud Run Logs
+      - name: Check Cloud Run Status
         if: always()
-        env:
-          PROJECT_ID: ${{ secrets.PROJECT_ID }}
         run: |
-          echo "--- Last 50 Cloud Run Logs ---"
-          gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=swagger-generator-app" \
-            --project=$PROJECT_ID \
-            --limit=50 \
-            --format="json"
-
-          echo "--- Current Cloud Run Status ---"
           gcloud run services describe swagger-generator-app \
-            --region=us-west4 \
-            --project=$PROJECT_ID
-
-      - name: Verify Deployment
-        run: echo "✅ Deployment completed successfully"
+            --region=$GCP_REGION \
+            --project=$PROJECT_ID \
+            --format="yaml(status, traffic, url)"
