@@ -4,7 +4,7 @@ import { genkit, z } from 'genkit';
 // Configure GenKit with Google AI
 const ai = genkit({
   plugins: [googleAI({
-    apiKey: process.env.GOOGLE_API_KEY || 'AIzaSyACXDMG8NTf8epBQxfulHqRwGoo2phu9Zs',
+    apiKey: process.env.GOOGLE_API_KEY || '',
   })],
   model: googleAI.model('gemini-2.5-flash', {
     temperature: 0.3
