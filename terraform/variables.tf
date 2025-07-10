@@ -5,6 +5,10 @@ provider "google" {
 
 variable "project_id" {
   type = string
+  validation {
+    condition     = length(var.project_id) > 0
+    error_message = "Project ID must not be empty"
+  }
 }
 
 variable "region" {
