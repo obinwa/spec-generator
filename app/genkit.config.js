@@ -1,7 +1,7 @@
+"use strict";
 // import { configureGenkit } from '@genkit-ai/core';
 // import { googleAI } from '@genkit-ai/googleai';
 // import {expressServer} from '@genkit-ai/express';
-
 // export default configureGenkit({
 //   plugins: [
 //     expressServer(),
@@ -11,11 +11,8 @@
 //   ],
 //   logLevel: 'info',
 // });
-
-
 // import { googleAI } from '@genkit-ai/googleai';
 // import { genkit } from 'genkit';
-
 // // Configure a Genkit instance
 // const ai = genkit({
 //   plugins: [
@@ -25,5 +22,4 @@
 //   ],
 //   model: googleAI.model('gemini-2.0-flash'), // set default model
 // });
-
 // export default ai;

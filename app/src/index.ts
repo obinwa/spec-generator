@@ -3,7 +3,7 @@ import { Request, Response } from 'express';
 import cors from 'cors';
 import {SwaggerGeneratorModel} from './models/SwaggerGeneratorModel';
 import {SwaggerPromptService} from './services/SwaggerPromptService';
-import { generateResponse } from 'ai-service';
+import { generateResponse } from './ai-service';
 
 const app = express();
 const PORT = process.env.PORT || 8080;

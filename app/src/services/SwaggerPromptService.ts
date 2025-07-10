@@ -1,4 +1,7 @@
-import { AppDescription, SwaggerGeneratorModel } from '../models/SwaggerGeneratorModel';
+import { SwaggerGeneratorModel } from '../models/SwaggerGeneratorModel';
+import { 
+  AppDescription
+ } from '../types/swagger';
 
 export class SwaggerPromptService {
   private static readonly BASE_PROMPT = `

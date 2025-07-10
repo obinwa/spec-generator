@@ -35,3 +35,8 @@ docker-compose.override.yml
 
 # Cloud Build
 cloudbuild-logs/
+
+# In .gitignore
+dist/
+*.js
+!*.config.js
