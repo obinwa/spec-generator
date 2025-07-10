@@ -43,8 +43,9 @@ resource "google_cloud_run_service" "genkit" {
 
 
   timeouts {
-    create = "10m"
-    update = "10m"
+    create = "5m"
+    update = "5m"
+    delete = "5m"
   }
 }
 
