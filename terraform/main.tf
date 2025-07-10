@@ -1,11 +1,10 @@
-resource "google_artifact_registry_repository" "docker_repo" {
+data "google_artifact_registry_repository" "docker_repo" {
   location      = "us-west4"
   repository_id = "swagger-generator"
-  format        = "DOCKER"
 }
 
 resource "google_cloud_run_service" "genkit" {
-  depends_on = [google_artifact_registry_repository.docker_repo]
+  depends_on = [data.google_artifact_registry_repository.docker_repo]
   name     = "swagger-generator-app"
   location = "us-west4"
 
@@ -41,10 +40,11 @@ resource "google_cloud_run_service" "genkit" {
     latest_revision = true
   }
 
-  lifecycle {
-    ignore_changes = [
-      template[0].metadata[0].annotations,
-    ]
+
+
+  timeouts {
+    create = "10m"
+    update = "10m"
   }
 }
 

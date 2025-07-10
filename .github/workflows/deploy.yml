@@ -53,20 +53,42 @@ jobs:
         run: terraform init
         working-directory: ./terraform
 
+      - name: Verify Terraform State
+        run: terraform state list
+        working-directory: ./terraform
+
       - name: Terraform Apply
         run: |
+          set -e
+          # First check if resource exists
+          if terraform state list | grep -q "google_cloud_run_service.genkit"; then
+            echo "Resource exists in state, running apply"
+          else
+            echo "Resource not in state, attempting import first"
+            terraform import google_cloud_run_service.genkit namespaces/${{ secrets.PROJECT_ID }}/services/swagger-generator-app || true
+          fi
+          
           terraform apply -auto-approve \
             -var="image_tag=${{ github.sha }}" \
             -var="google_api_key=${{ secrets.GOOGLE_API_KEY }}" \
-            -var="project_id=${{ secrets.PROJECT_ID }}"
-          sleep 60  # Wait for Cloud Run to be ready
+            -var="project_id=${{ secrets.PROJECT_ID }}" \
+            -lock-timeout=5m
+          
+          # Wait for deployment to be ready
+          SERVICE_URL=$(terraform output -raw service_url)
+          echo "Waiting for service to be ready at $SERVICE_URL"
+          gcloud run services describe swagger-generator-app \
+            --region=us-west4 \
+            --project=${{ secrets.PROJECT_ID }} \
+            --format="value(status.url)" \
+            --wait
         working-directory: ./terraform
 
       - name: Smoke Test Deployment
         run: |
           SERVICE_URL=$(terraform output -raw service_url)
           echo "Testing service at $SERVICE_URL"
-          for i in {1..5}; do
+          for i in {1..10}; do
             if curl -sSf "$SERVICE_URL/health"; then
               echo "Health check passed"
               exit 0
@@ -74,16 +96,23 @@ jobs:
             echo "Attempt $i failed, retrying in 10 seconds..."
             sleep 10
           done
-          echo "Health check failed after 5 attempts"
+          echo "Health check failed after 10 attempts"
           exit 1
         working-directory: ./terraform
 
       - name: Check Cloud Run Logs
         if: always()
         run: |
+          echo "--- Last 50 Cloud Run Logs ---"
           gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=swagger-generator-app" \
             --project=$PROJECT_ID \
-            --limit=50
+            --limit=50 \
+            --format="json"
+          
+          echo "--- Current Cloud Run Status ---"
+          gcloud run services describe swagger-generator-app \
+            --region=us-west4 \
+            --project=$PROJECT_ID
 
       - name: Verify Deployment
         run: echo "Deployment completed successfully"
