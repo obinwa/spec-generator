@@ -13,7 +13,7 @@ jobs:
       GCP_REGION: us-west4 
     defaults:
       run:
-        working-directory: ./app  # All run steps default to ./app unless overridden
+        working-directory: ./app
 
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +22,25 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # ✅ Setup Terraform early to create the Artifact Registry repo
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-west4-docker.pkg.dev
+
+      # ✅ Build the app (TypeScript)
+      - name: Install & Build App
+        run: |
+          npm ci
+          npm run build
+        working-directory: ./app
+
+      # ✅ Build and push Docker image *before* Terraform Apply
+      - name: Build and Push Docker Image
+        run: |
+          docker build -t swagger-spec-generator .
+          docker tag swagger-spec-generator us-west4-docker.pkg.dev/${{ secrets.PROJECT_ID }}/swagger-generator/swagger-generator-app:${{ github.sha }}
+          docker push us-west4-docker.pkg.dev/${{ secrets.PROJECT_ID }}/swagger-generator/swagger-generator-app:${{ github.sha }}
+        working-directory: ./app
+
+      # ✅ Setup Terraform after image is available
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -40,29 +58,12 @@ jobs:
             -var="project_id=${{ secrets.PROJECT_ID }}"
         working-directory: ./terraform
 
-      # ✅ Configure Docker for pushing to Artifact Registry
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker us-west4-docker.pkg.dev
-
-      # ✅ Build the app
-      - name: Build TypeScript
-        run: npm install && npm run build
-        working-directory: ./app
-
-      # ✅ Build and Push Docker Image to Artifact Registry
-      - name: Build and Push Docker Image
-        run: |
-          docker build -t swagger-spec-generator . || exit 1
-          docker tag swagger-spec-generator us-west4-docker.pkg.dev/${{ secrets.PROJECT_ID }}/swagger-generator/swagger-generator-app:${{ github.sha }}
-          docker push us-west4-docker.pkg.dev/${{ secrets.PROJECT_ID }}/swagger-generator/swagger-generator-app:${{ github.sha }} || exit 1
-
-      # ✅ Smoke Test Cloud Run Deployment
+      # ✅ Smoke Test Deployment
       - name: Smoke Test Deployment
         run: |
           SERVICE_URL=$(terraform output -raw service_url)
           curl -sSf "$SERVICE_URL/health" || (echo "Health check failed"; exit 1)
         working-directory: ./terraform
 
-      # ✅ Final Confirmation
       - name: Verify Deployment
         run: echo "Deployment completed successfully"
