@@ -12,7 +12,6 @@ resource "google_cloud_run_service" "genkit" {
   template {
     spec {
       containers {
-        # Reference the pushed image
         image = "us-west4-docker.pkg.dev/${var.project_id}/swagger-generator/swagger-generator-app:${var.image_tag}"
         
         ports {
@@ -25,7 +24,13 @@ resource "google_cloud_run_service" "genkit" {
         }
         env {
           name  = "GOOGLE_API_KEY"
-          value = var.google_api_key  # Will be passed from GitHub Secrets
+          value = var.google_api_key
+        }
+        resources {
+          limits = {
+            cpu    = "1000m"
+            memory = "512Mi"
+          }
         }
       }
     }
@@ -34,6 +39,12 @@ resource "google_cloud_run_service" "genkit" {
   traffic {
     percent         = 100
     latest_revision = true
+  }
+
+  lifecycle {
+    ignore_changes = [
+      template[0].metadata[0].annotations,
+    ]
   }
 }
 
