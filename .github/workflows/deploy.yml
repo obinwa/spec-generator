@@ -32,17 +32,21 @@ jobs:
         working-directory: ./app
 
       - name: Build and Push Docker Image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t swagger-spec-generator .
-          docker tag swagger-spec-generator us-west4-docker.pkg.dev/${{ secrets.PROJECT_ID }}/swagger-generator/swagger-generator-app:${{ github.sha }}
-          docker push us-west4-docker.pkg.dev/${{ secrets.PROJECT_ID }}/swagger-generator/swagger-generator-app:${{ github.sha }}
+          docker tag swagger-spec-generator us-west4-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app:$IMAGE_TAG
+          docker push us-west4-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app:$IMAGE_TAG
         working-directory: ./app
 
       - name: Verify Docker Image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           gcloud artifacts docker images list us-west4-docker.pkg.dev/$PROJECT_ID/swagger-generator/swagger-generator-app \
             --include-tags \
-            --filter="tags=${{ github.sha }}"
+            --filter="tags=$IMAGE_TAG"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -53,19 +57,12 @@ jobs:
         run: terraform init
         working-directory: ./terraform
 
-      - name: Debug Environment Variables
-        env:
-          PROJECT_ID: ${{ secrets.PROJECT_ID }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        run: |
-          echo "PROJECT_ID = $PROJECT_ID"
-          echo "GOOGLE_API_KEY is ${#GOOGLE_API_KEY} characters long"
-
       - name: Terraform Apply
         timeout-minutes: 10
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           PROJECT_ID: ${{ secrets.PROJECT_ID }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           set -e
 
@@ -80,7 +77,7 @@ jobs:
           fi
 
           terraform apply -auto-approve \
-            -var="image_tag=${{ github.sha }}" \
+            -var="image_tag=$IMAGE_TAG" \
             -var="google_api_key=$GOOGLE_API_KEY" \
             -var="project_id=$PROJECT_ID" \
             -lock-timeout=5m
@@ -95,11 +92,13 @@ jobs:
         working-directory: ./terraform
 
       - name: Smoke Test Deployment
+        env:
+          PROJECT_ID: ${{ secrets.PROJECT_ID }}
         run: |
           SERVICE_URL=$(terraform output -raw service_url)
           echo "Testing service at $SERVICE_URL"
           for i in {1..10}; do
-            if curl -sSf "$SERVICE_URL/health"; then
+            if curl -sSf "$SERVICE_URL/api/health"; then
               echo "Health check passed"
               exit 0
             fi
@@ -112,6 +111,8 @@ jobs:
 
       - name: Check Cloud Run Logs
         if: always()
+        env:
+          PROJECT_ID: ${{ secrets.PROJECT_ID }}
         run: |
           echo "--- Last 50 Cloud Run Logs ---"
           gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=swagger-generator-app" \
@@ -125,4 +126,4 @@ jobs:
             --project=$PROJECT_ID
 
       - name: Verify Deployment
-        run: echo "Deployment completed successfully"
+        run: echo "✅ Deployment completed successfully"
